@@ -1,0 +1,54 @@
+# ==========================================
+# 1. Python Environment & Dependencies
+# ==========================================
+venv/
+env/
+.env
+bin/
+lib/
+include/
+pyvenv.cfg
+pip-selfcheck.json
+
+# ==========================================
+# 2. Python Cache & Compiled Files
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ==========================================
+# 3. Project Specific (BI Engine Cache)
+# ==========================================
+# Kita mengabaikan isi folder cache agar tidak mengotori repo, 
+# tapi tetap menjaga folder tersebut (opsional)
+cache/*.json
+logs/
+*.log
+
+# ==========================================
+# 4. OS Specific Files (File sampah sistem)
+# ==========================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==========================================
+# 5. IDE & AI Tools (Claude, VS Code, etc)
+# ==========================================
+.claude/
+.vscode/
+.idea/
+*.swp
+settings.local.json
+
+# ==========================================
+# 6. Node.js (Jika folder frontend Next.js ada di sini)
+# ==========================================
+node_modules/
+.next/
+out/
+build/
+.vercel
