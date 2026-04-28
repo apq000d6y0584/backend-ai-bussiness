@@ -209,44 +209,34 @@ async def health_check() -> dict:
 # Endpoint utama: Analisis lengkap
 @app.get("/api/bi")
 async def analyze_stock(
-    ticker: str = Query(
-        ..., 
-        description="Stock ticker symbol", 
-        min_length=1, 
-        max_length=10
-    ),
-    force_refresh: bool = Query(
-        False, 
-        description="Force refresh cache"
-    )
+    ticker: str = Query(..., min_length=1, max_length=10),
+    force_refresh: bool = Query(False)
 ):
     """
-    Endpoint utama: Analisis lengkap
+    Endpoint utama: Analisis lengkap dengan parameter sederhana
     """
     try:
-        # 1. Normalisasi & Validasi Ticker
+        # 1. Normalisasi Ticker
         ticker_upper = ticker.upper()
+        
+        # 2. Validasi Regex (Pastikan 'import re' ada di baris paling atas file)
         if not re.match(r'^[A-Z0-9.\-]+$', ticker_upper):
             raise HTTPException(status_code=400, detail="Invalid ticker format")
 
-        # 2. Jalankan BI Engine
-        # Pastikan class BIEngine sudah benar di-import dari bi_engine.py
+        # 3. Jalankan BI Engine
         engine = BIEngine(ticker_upper)
         result = engine.run()
 
         if result.get("status") == "success":
             return result
         else:
-            # Mengambil pesan error dari engine jika ada
             error_msg = result.get("error", "Analysis failed")
             raise HTTPException(status_code=400, detail=error_msg)
 
     except HTTPException:
         raise
     except Exception as e:
-        # Menangkap error sistem lainnya
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
-
+        raise HTTPException(status_code=500, detail=f"Internal Error: {str(e)}")
 
 # Endpoint: Hanya data stock
 @app.get("/api/stock", response_model=StockResponse)
