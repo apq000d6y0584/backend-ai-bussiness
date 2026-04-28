@@ -207,39 +207,43 @@ async def health_check() -> dict:
 # ==================== API ENDPOINTS ====================
 
 # Endpoint utama: Analisis lengkap
-@app.get("/api/bi", response_model=BIResponse)
+@app.get("/api/bi")
 async def analyze_stock(
-    ticker: Annotated[str, Query(
-        ...,
-        description="Stock ticker symbol",
-        examples=["AAPL", "MSFT", "GOOGL"],
-        min_length=1,
+    ticker: str = Query(
+        ..., 
+        description="Stock ticker symbol", 
+        min_length=1, 
         max_length=10
-    )],
-    force_refresh: Annotated[bool, Query(False)] = False
-) -> dict:
+    ),
+    force_refresh: bool = Query(False, description="Force refresh cache")
+):
     """
-    Endpoint utama untuk analisis BI lengkap
+    Endpoint utama: Analisis lengkap
     """
-    # Validasi ticker format
-    if not re.match(r'^[A-Z0-9.\-]+$', ticker.upper()):
-        raise HTTPException(
-            status_code=422,
-            detail="Ticker hanya boleh berisi huruf, angka, titik, atau dash"
-        )
-
-    ticker = ticker.upper()
-
     try:
-        if force_refresh:
-            CacheManager.clear_all()
+        # 1. Normalisasi ticker (huruf besar)
+        ticker_upper = ticker.upper()
+        
+        # 2. Validasi format ticker menggunakan regex
+        if not re.match(r'^[A-Z0-9.\-]+$', ticker_upper):
+            raise HTTPException(status_code=400, detail="Invalid ticker format")
 
-        engine = BIEngine(ticker)
+        # 3. Jalankan BI Engine
+        # Pastikan BIEngine sudah di-import di bagian atas file
+        engine = BIEngine(ticker_upper)
+        # Tambahkan parameter force_refresh jika engine kamu mendukungnya
         result = engine.run()
 
-        return result
+        if result.get("status") == "success":
+            # Kita kembalikan data yang dibutuhkan frontend
+            return result
+        else:
+            raise HTTPException(status_code=400, detail="Analysis failed")
 
+    except HTTPException:
+        raise
     except Exception as e:
+        # Menangkap error tak terduga
         raise HTTPException(status_code=500, detail=str(e))
 
 
