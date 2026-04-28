@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
+from pydantic_settings import BaseSettings
 from typing import Optional, List, Any, Annotated
 import uvicorn
 import json
