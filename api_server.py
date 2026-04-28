@@ -206,38 +206,34 @@ async def health_check() -> dict:
 
 # ==================== API ENDPOINTS ====================
 
-# Endpoint utama: Analisis lengkap
+# Endpoint utama: Analisis Lengkap
 @app.get("/api/bi")
 async def analyze_stock(
     ticker: str = Query(..., min_length=1, max_length=10),
     force_refresh: bool = Query(False)
 ):
     """
-    Endpoint utama: Analisis lengkap dengan parameter sederhana
+    Endpoint utama: Analisis lengkap
     """
     try:
-        # 1. Normalisasi Ticker
+        # Normalisasi ticker
         ticker_upper = ticker.upper()
         
-        # 2. Validasi Regex (Pastikan 'import re' ada di baris paling atas file)
+        # Validasi Regex (Pastikan 'import re' ada di paling atas)
         if not re.match(r'^[A-Z0-9.\-]+$', ticker_upper):
             raise HTTPException(status_code=400, detail="Invalid ticker format")
 
-        # 3. Jalankan BI Engine
+        # Jalankan BI Engine
         engine = BIEngine(ticker_upper)
         result = engine.run()
 
         if result.get("status") == "success":
             return result
         else:
-            error_msg = result.get("error", "Analysis failed")
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPException(status_code=400, detail="Analysis failed")
 
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal Error: {str(e)}")
-
+        raise HTTPException(status_code=500, detail=str(e))
 # Endpoint: Hanya data stock
 @app.get("/api/stock", response_model=StockResponse)
 async def get_stock_data(
