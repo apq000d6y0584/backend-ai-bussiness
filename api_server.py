@@ -215,36 +215,37 @@ async def analyze_stock(
         min_length=1, 
         max_length=10
     ),
-    force_refresh: bool = Query(False, description="Force refresh cache")
+    force_refresh: bool = Query(
+        False, 
+        description="Force refresh cache"
+    )
 ):
     """
     Endpoint utama: Analisis lengkap
     """
     try:
-        # 1. Normalisasi ticker (huruf besar)
+        # 1. Normalisasi & Validasi Ticker
         ticker_upper = ticker.upper()
-        
-        # 2. Validasi format ticker menggunakan regex
         if not re.match(r'^[A-Z0-9.\-]+$', ticker_upper):
             raise HTTPException(status_code=400, detail="Invalid ticker format")
 
-        # 3. Jalankan BI Engine
-        # Pastikan BIEngine sudah di-import di bagian atas file
+        # 2. Jalankan BI Engine
+        # Pastikan class BIEngine sudah benar di-import dari bi_engine.py
         engine = BIEngine(ticker_upper)
-        # Tambahkan parameter force_refresh jika engine kamu mendukungnya
         result = engine.run()
 
         if result.get("status") == "success":
-            # Kita kembalikan data yang dibutuhkan frontend
             return result
         else:
-            raise HTTPException(status_code=400, detail="Analysis failed")
+            # Mengambil pesan error dari engine jika ada
+            error_msg = result.get("error", "Analysis failed")
+            raise HTTPException(status_code=400, detail=error_msg)
 
     except HTTPException:
         raise
     except Exception as e:
-        # Menangkap error tak terduga
-        raise HTTPException(status_code=500, detail=str(e))
+        # Menangkap error sistem lainnya
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
 # Endpoint: Hanya data stock
