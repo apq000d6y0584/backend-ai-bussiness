@@ -26,29 +26,6 @@ from bi_engine import BIEngine, CacheManager, StockDataCollector, NewsScraper
 
 # ==================== PYDANTIC MODELS ====================
 
-class StockQuery(BaseModel):
-    """Model untuk query parameter stock"""
-    ticker: str = Field(
-        ...,
-        description="Stock ticker symbol",
-        examples=["AAPL", "MSFT", "GOOGL"],
-        min_length=1,
-        max_length=10
-    )
-    force_refresh: bool = Field(
-        False,
-        description="Force refresh cache"
-    )
-
-    @field_validator('ticker')
-    @classmethod
-    def validate_ticker(cls, v: str) -> str:
-        """Validasi format ticker - huruf besar, angka, titik, dash"""
-        if not re.match(r'^[A-Z0-9.\-]+$', v.upper()):
-            raise ValueError('Ticker hanya boleh berisi huruf, angka, titik, atau dash')
-        return v.upper()
-
-
 class StockDataQuery(BaseModel):
     """Model untuk query parameter stock data"""
     ticker: str = Field(..., min_length=1, max_length=10)
