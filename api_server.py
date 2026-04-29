@@ -20,7 +20,7 @@ import uvicorn
 import json
 import sys
 import os
-
+  
 
 from bi_engine import BIEngine, CacheManager, StockDataCollector, NewsScraper
 
@@ -212,8 +212,8 @@ async def analyze_stock(
 # Endpoint: Hanya data stock
 @app.get("/api/stock", response_model=StockResponse)
 async def get_stock_data(
-    ticker: Annotated[str, Query(..., min_length=1, max_length=10)],
-    days: Annotated[int, Query(7, ge=1, le=30)] = 7
+    ticker: str = Query(..., min_length=1, max_length=10),
+    days: int = Query(default=7, ge=1, le=30)
 ) -> dict:
     """Ambil hanya data harga saham"""
     # Validasi ticker
@@ -233,7 +233,7 @@ async def get_stock_data(
 # Endpoint: Hanya berita
 @app.get("/api/news", response_model=NewsResponse)
 async def get_news(
-    source: Annotated[str, Query("cnbc")] = "cnbc"
+    source: str = Query(default="cnbc")
 ) -> dict:
     """Ambil hanya berita terbaru"""
     try:
@@ -246,7 +246,7 @@ async def get_news(
 # Endpoint: Skor sentimen saja
 @app.get("/api/sentiment", response_model=SentimentResponse)
 async def get_sentiment(
-    ticker: Annotated[str, Query(..., min_length=1, max_length=10)]
+    ticker: str = Query(..., min_length=1, max_length=10)
 ) -> dict:
     """Ambil hanya skor sentimen"""
     if not re.match(r'^[A-Z0-9.\-]+$', ticker.upper()):
@@ -275,7 +275,7 @@ async def get_sentiment(
 # Endpoint: Rekomendasi saja
 @app.get("/api/recommendations")
 async def get_recommendations(
-    ticker: Annotated[str, Query(..., min_length=1, max_length=10)]
+    ticker: str = Query(..., min_length=1, max_length=10)
 ) -> dict:
     """Ambil strategi rekomendasi"""
     if not re.match(r'^[A-Z0-9.\-]+$', ticker.upper()):
