@@ -21,8 +21,6 @@ import json
 import sys
 import os
 
-# Tambah path untuk import bi_engine
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bi_engine import BIEngine, CacheManager, StockDataCollector, NewsScraper
 
@@ -457,6 +455,8 @@ async def websocket_endpoint(websocket: WebSocket):
 # ==================== MAIN ====================
 if __name__ == "__main__":
     import os
+    import uvicorn
+    
     from datetime import datetime
 
     # Default port: 8000
@@ -467,5 +467,6 @@ if __name__ == "__main__":
     print(f"Server running at: http://localhost:{server_port}")
     print(f"Docs available at: http://localhost:{server_port}/docs")
     print(f"{'='*60}\n")
+    
 
     uvicorn.run(app, host="0.0.0.0", port=server_port)
