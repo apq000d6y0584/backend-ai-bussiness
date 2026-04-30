@@ -52,19 +52,25 @@ class DLAnalyzer:
         return cls._instance
 
     def _load_model(self):
-        """Load FinBERT model hanya sekali (lazy loading)"""
+        """
+        Load DistilRoBERTa yang lebih ringan (lazy loading).
+        Cocok untuk lingkungan dengan RAM terbatas seperti Railway.
+        """
         if self._sentiment_pipeline is None:
             try:
-                logger.info("Loading FinBERT model: ProsusAI/finbert...")
+                # Menggunakan model DistilRoBERTa khusus finansial
+                model_name = "mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis"
+                logger.info(f"Menginisialisasi model ringan: {model_name}...")
+                
                 self._sentiment_pipeline = pipeline(
                     "sentiment-analysis",
-                    model="ProsusAI/finbert",
-                    tokenizer="ProsusAI/finbert",
-                    device=-1  # CPU (-1) or GPU (0)
+                    model=model_name,
+                    tokenizer=model_name,
+                    device=-1  # Menggunakan CPU untuk efisiensi memori
                 )
-                logger.info("FinBERT model loaded successfully")
+                logger.info("DistilRoBERTa berhasil dimuat!")
             except Exception as e:
-                logger.error(f"Error loading FinBERT model: {e}")
+                logger.error(f"Gagal memuat model: {e}")
                 raise
 
     def analyze_sentiment(self, headlines: List[str]) -> Dict[str, Any]:
