@@ -16,6 +16,7 @@ import re
 import time
 import hashlib
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 from pathlib import Path
@@ -24,6 +25,7 @@ import requests
 import yfinance
 from bs4 import BeautifulSoup
 import numpy as np
+from supabase import create_client, Client
 
 # Transformers for FinBERT sentiment analysis
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
@@ -921,11 +923,15 @@ class BIEngine:
                     # Rekomendasi
                     "recommendations": recommendations
                 },
-                # Untuk frontend Next.js
+# Untuk frontend Next.js
                 "json_ready": True
             }
 
             logger.info(f"BI Engine selesai untuk {self.ticker}")
+            
+            # Simpan data ke Supabase jika environment variables tersedia
+            self.save_to_supabase()
+            
             return self.final_result
 
         except Exception as e:
@@ -935,6 +941,133 @@ class BIEngine:
                 "error": str(e),
                 "ticker": self.ticker,
                 "generated_at": datetime.now().isoformat()
+            }
+
+    def save_to_supabase(self) -> Dict[str, Any]:
+        """
+        Simpan data analisis ke Supabase.
+        Menggunakan strategi delete-before-insert untuk mencegah database bloat.
+        
+        Returns:
+            Dictionary dengan status operasi
+        """
+        # Ambil credentials dari environment variables
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            logger.warning("SUPABASE_URL atau SUPABASE_KEY tidak ditemukan di environment variables")
+            return {
+                "success": False,
+                "error": "SUPABASE_URL atau SUPABASE_KEY tidak ditemukan"
+            }
+        
+        try:
+            # Inisialisasi client Supabase
+            supabase: Client = create_client(supabase_url, supabase_key)
+            logger.info(f"Menghubungkan ke Supabase: {supabase_url}")
+            
+            ticker = self.ticker
+            generated_at = self.final_result.get("generated_at", datetime.now().isoformat())
+            
+            # ========== 1. Simpan ke stock_data ==========
+            stock_data = self.final_result.get("data", {}).get("stock_data", {})
+            if stock_data.get("success"):
+                stock_record = stock_data.get("data", {})
+                
+                # Hapus data lama dengan ticker yang sama (strategi delete-before-insert)
+                supabase.table("stock_data").delete().eq("ticker", ticker).execute()
+                
+                # Insert data baru
+                supabase.table("stock_data").insert({
+                    "ticker": ticker,
+                    "dates": stock_record.get("dates", []),
+                    "closing_prices": stock_record.get("closing_prices", []),
+                    "current_price": stock_record.get("current_price"),
+                    "price_change": stock_record.get("price_change"),
+                    "price_change_percent": stock_record.get("price_change_percent"),
+                    "average_price": stock_record.get("average_price"),
+                    "highest_price": stock_record.get("highest_price"),
+                    "lowest_price": stock_record.get("lowest_price")
+                }).execute()
+                logger.info(f"Stock data disimpan untuk {ticker}")
+            
+            # ========== 2. Simpan ke news_data ==========
+            news_data = self.final_result.get("data", {}).get("news_data", {})
+            if news_data.get("success"):
+                news_record = news_data.get("data", {})
+                
+                # Hapus data lama dengan source yang sama
+                supabase.table("news_data").delete().eq("source", news_record.get("source", "CNBC World Markets")).execute()
+                
+                # Insert data baru
+                supabase.table("news_data").insert({
+                    "source": news_record.get("source", "CNBC World Markets"),
+                    "headlines": news_record.get("headlines", []),
+                    "total_found": news_record.get("total_found"),
+                    "relevant_count": news_record.get("relevant_count")
+                }).execute()
+                logger.info(f"News data disimpan")
+            
+            # ========== 3. Simpan ke merged_data ==========
+            merged_data = self.merged_data
+            if merged_data.get("success"):
+                # Hapus data lama dengan ticker yang sama
+                supabase.table("merged_data").delete().eq("ticker", ticker).execute()
+                
+                # Insert data baru
+                supabase.table("merged_data").insert({
+                    "ticker": ticker,
+                    "quantitative_data": merged_data.get("quantitative_data", {}),
+                    "qualitative_data": merged_data.get("qualitative_data", {})
+                }).execute()
+                logger.info(f"Merged data disimpan untuk {ticker}")
+            
+            # ========== 4. Simpan ke sentiment_score ==========
+            sentiment = self.final_result.get("data", {}).get("sentiment", {})
+            if sentiment:
+                score = sentiment.get("score", 5)
+                label = sentiment.get("label", "netral").lower().replace(" ", "_")
+                
+                # Hapus data lama dengan score yang sama
+                supabase.table("sentiment_score").delete().eq("score", score).execute()
+                
+                # Insert data baru
+                supabase.table("sentiment_score").insert({
+                    "score": score,
+                    "label": label,
+                    "quantitative_score": sentiment.get("breakdown", {}).get("quantitative_score"),
+                    "finbert_score": sentiment.get("breakdown", {}).get("finbert_score"),
+                    "breakdown": sentiment.get("breakdown", {}),
+                    "interpretation": sentiment.get("interpretation")
+                }).execute()
+                logger.info(f"Sentiment score disimpan: {score}/{label}")
+            
+            # ========== 5. Simpan ke recommendations ==========
+            recommendations = self.final_result.get("data", {}).get("recommendations", [])
+            if recommendations:
+                # Hapus rekomendasi lama (tidak ada ticker di recommendations table, jadi hapus semua)
+                supabase.table("recommendations").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+                
+                for rec in recommendations:
+                    supabase.table("recommendations").insert({
+                        "title": rec.get("title"),
+                        "description": rec.get("description"),
+                        "priority": rec.get("priority", "rendah").lower()
+                    }).execute()
+                logger.info(f"{len(recommendations)} rekomendasi disimpan")
+            
+            return {
+                "success": True,
+                "message": "Data berhasil disimpan ke Supabase",
+                "ticker": ticker
+            }
+            
+        except Exception as e:
+            logger.error(f"Error menyimpan ke Supabase: {e}")
+            return {
+                "success": False,
+                "error": str(e)
             }
 
 

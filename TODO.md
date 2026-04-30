@@ -1,31 +1,25 @@
-# BI AI Engine - Task Progress Tracker
+# TODO: Add save_to_supabase to BIEngine
 
-## Current Task: Fix FastAPI Startup Error in Container ✅ **COMPLETED**
+## Plan
 
-### Steps Completed:
+- [x] 1. Update requirements.txt - add supabase library
+- [x] 2. Add save_to_supabase method to BIEngine class in bi_engine.py
+- [x] 3. Update run() method to call save_to_supabase() after generating final_result
 
-- [x] 1. Read api_server.py to identify exact issue
-- [x] 2. Create detailed edit plan  
-- [x] 3. Get user approval for plan
-- [x] 4. Create TODO.md with progress tracking
-- [x] 5. Fix Annotated/Query syntax errors using edit_file tool:
-  - ✅ `/api/stock` days parameter 
-  - ✅ `/api/news` source parameter
-  - ✅ `/api/stock`, `/api/sentiment`, `/api/recommendations` ticker parameters
-- [x] 6. Verify all problematic endpoints fixed (no more Annotated+Query default errors)
-- [x] 7. All syntax fixes applied successfully
+## Implementation Details
 
-**Status**: ✅ **All FastAPI parameter syntax errors fixed. Container startup crash resolved.**
+1. **requirements.txt**: Add `supabase>=2.0.0` for supabase-py library
 
-## Next Steps for User:
-1. **Redeploy container** - The server should now start without the AssertionError
-2. Test endpoints:
-   ```
-   curl http://localhost:8000/api/stock?ticker=AAPL
-   curl http://localhost:8000/api/news  
-   curl http://localhost:8000/api/sentiment?ticker=AAPL
-   ```
-3. Monitor container logs - expect "Uvicorn running on http://0.0.0.0:8000"
+2. **bi_engine.py - save_to_supabase method**:
+   - Reads SUPABASE_URL and SUPABASE_KEY from os.environ
+   - Uses supabase-py client
+   - Implements delete-before-insert strategy to prevent database bloat
+   - Saves data to multiple tables based on supabase_schema.sql:
+     - stock_data: ticker, dates, closing_prices, current_price, price_change, etc.
+     - news_data: source, headlines, total_found, relevant_count
+     - merged_data: ticker, quantitative_data, qualitative_data
+     - sentiment_score: score, label, breakdown
+     - recommendations: title, description, priority
 
-**All code changes complete and verified!**
+3. **bi_engine.py - run() method**: Call save_to_supabase() after generating final_result
 
