@@ -23,6 +23,10 @@ from pathlib import Path
 import requests
 import yfinance
 from bs4 import BeautifulSoup
+import numpy as np
+
+# Transformers for FinBERT sentiment analysis
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
 
 # Configure logging
 logging.basicConfig(
@@ -30,6 +34,161 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# ==================== DL ANALYZER (FinBERT) - Singleton Pattern ====================
+class DLAnalyzer:
+    """
+    Deep Learning Analyzer menggunakan FinBERT untuk analisis sentimen.
+    Menggunakan Singleton pattern agar model hanya di-load sekali.
+    """
+    _instance = None
+    _model = None
+    _tokenizer = None
+    _sentiment_pipeline = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(DLAnalyzer, cls).__new__(cls)
+        return cls._instance
+
+    def _load_model(self):
+        """Load FinBERT model hanya sekali (lazy loading)"""
+        if self._sentiment_pipeline is None:
+            try:
+                logger.info("Loading FinBERT model: ProsusAI/finbert...")
+                self._sentiment_pipeline = pipeline(
+                    "sentiment-analysis",
+                    model="ProsusAI/finbert",
+                    tokenizer="ProsusAI/finbert",
+                    device=-1  # CPU (-1) or GPU (0)
+                )
+                logger.info("FinBERT model loaded successfully")
+            except Exception as e:
+                logger.error(f"Error loading FinBERT model: {e}")
+                raise
+
+    def analyze_sentiment(self, headlines: List[str]) -> Dict[str, Any]:
+        """
+        Analisis sentimen untuk setiap headline menggunakan FinBERT.
+        
+        Args:
+            headlines: List dari judul berita
+            
+        Returns:
+            Dictionary dengan hasil analisis sentimen per headline dan rata-rata
+        """
+        # Lazy load model saat pertama kali digunakan
+        self._load_model()
+
+        if not headlines:
+            return {
+                "success": True,
+                "headlines_analyzed": 0,
+                "average_score": 5.0,
+                "average_label": "Netral",
+                "positive_count": 0,
+                "negative_count": 0,
+                "neutral_count": 0,
+                "results": []
+            }
+
+        results = []
+        positive_count = 0
+        negative_count = 0
+        neutral_count = 0
+
+        for headline in headlines:
+            try:
+                # Batasi panjang teks untuk FinBERT (max 512 tokens)
+                text = headline[:512] if len(headline) > 512 else headline
+                
+                # Analisis sentimen
+                output = self._sentiment_pipeline(text)[0]
+                
+                # FinBERT output: positive, negative, neutral
+                # Konversi ke skor 1-10
+                label = output['label'].lower()
+                score = output['score']
+
+                # Map ke skor 1-10
+                if label == 'positive':
+                    mapped_score = round(5 + (score * 5))  # 5-10
+                    mapped_score = min(10, max(6, mapped_score))
+                    positive_count += 1
+                elif label == 'negative':
+                    mapped_score = round(5 - (score * 5))  # 1-5
+                    mapped_score = min(5, max(1, mapped_score))
+                    negative_count += 1
+                else:  # neutral
+                    mapped_score = 5
+                    neutral_count += 1
+
+                results.append({
+                    "headline": headline,
+                    "finbert_label": output['label'],
+                    "finbert_score": round(score, 4),
+                    "mapped_score": mapped_score
+                })
+
+            except Exception as e:
+                logger.warning(f"Error analyzing headline: {e}")
+                results.append({
+                    "headline": headline,
+                    "finbert_label": "neutral",
+                    "finbert_score": 0.5,
+                    "mapped_score": 5
+                })
+                neutral_count += 1
+
+        # Hitung rata-rata skor
+        total = len(results)
+        if total > 0:
+            avg_score = sum(r['mapped_score'] for r in results) / total
+            avg_score = round(avg_score, 1)
+        else:
+            avg_score = 5.0
+
+        # Tentukan label rata-rata
+        if avg_score >= 7:
+            avg_label = "Positif"
+        elif avg_score >= 5:
+            avg_label = "Netral"
+        else:
+            avg_label = "Negatif"
+
+        return {
+            "success": True,
+            "headlines_analyzed": total,
+            "average_score": avg_score,
+            "average_label": avg_label,
+            "positive_count": positive_count,
+            "negative_count": negative_count,
+            "neutral_count": neutral_count,
+            "results": results
+        }
+
+    def get_average_sentiment(self, headlines: List[str]) -> Dict[str, Any]:
+        """
+        fungsi merata-ratakan skor sentimen dari semua berita menjadi skala 1-10.
+        
+        Args:
+            headlines: List dari judul berita
+            
+        Returns:
+            Dictionary dengan skor rata-rata dan breakdown
+        """
+        result = self.analyze_sentiment(headlines)
+        
+        return {
+            "score": result.get("average_score", 5.0),
+            "label": result.get("average_label", "Netral"),
+            "breakdown": {
+                "positive_count": result.get("positive_count", 0),
+                "negative_count": result.get("negative_count", 0),
+                "neutral_count": result.get("neutral_count", 0),
+                "total_headlines": result.get("headlines_analyzed", 0)
+            }
+        }
 
 # ==================== CONFIGURATION ====================
 CACHE_DIR = Path("cache")
@@ -476,33 +635,23 @@ class MarketAnalyzer:
             quantitative_trend = "netral"
             quantitative_signal = "持有"
 
-        # Analisis kualitatif - berita
+        # Analisis kualitatif - berita menggunakan FinBERT (DLAnalyzer)
         headlines = news_data.get("headlines", [])
 
-        # Hitung skor sentimen dari berita
-        positive_count = 0
-        negative_count = 0
+        # Gunakan DLAnalyzer untuk analisis sentimen FinBERT
+        dl_analyzer = DLAnalyzer()
+        finbert_result = dl_analyzer.analyze_sentiment(headlines)
 
-        for headline in headlines:
-            headline_lower = headline.lower()
-            for kw in POSITIVE_KEYWORDS:
-                if kw.lower() in headline_lower:
-                    positive_count += 1
-                    break
-            for kw in NEGATIVE_KEYWORDS:
-                if kw.lower() in headline_lower:
-                    negative_count += 1
-                    break
+        positive_count = finbert_result.get("positive_count", 0)
+        negative_count = finbert_result.get("negative_count", 0)
+        neutral_count = finbert_result.get("neutral_count", 0)
+        avg_finbert_score = finbert_result.get("average_score", 5.0)
+        avg_finbert_label = finbert_result.get("average_label", "Netral")
 
-        total_analyzed = positive_count + negative_count
-        if total_analyzed > 0:
-            sentiment_ratio = positive_count / total_analyzed
-        else:
-            sentiment_ratio = 0.5  # Default netral
-
-        if sentiment_ratio > 0.6:
+        # Tentukan trend kualitatif dari FinBERT
+        if avg_finbert_score >= 7:
             qualitative_trend = "positif"
-        elif sentiment_ratio < 0.4:
+        elif avg_finbert_score <= 4:
             qualitative_trend = "negatif"
         else:
             qualitative_trend = "netral"
@@ -513,12 +662,12 @@ class MarketAnalyzer:
             f"Analisis pasar untuk {ticker}: "
             f"Dari sisi kuantitatif, harga menunjukkan tren {quantitative_trend} "
             f"dengan perubahan {price_change:.2f}% dalam 7 hari terakhir. "
-            f"Dari sisi kualitatif, sentiment berita menunjukkan kecenderungan {qualitative_trend} "
-            f"({positive_count} berita positif, {negative_count} berita negatif). "
+            f"Dari sisi kualitatif (FinBERT), sentiment berita menunjukkan kecenderungan {qualitative_trend} "
+            f"dengan skor rata-rata {avg_finbert_score}/10 ({positive_count} berita positif, {negative_count} negatif, {neutral_count} netral). "
         )
 
         # Analisis sentimen gabungan
-        combined_sentiment = (sentiment_ratio + (0.5 if price_change >= 0 else 0.5)) / 2
+        combined_sentiment = (avg_finbert_score / 10 + (0.5 if price_change >= 0 else 0.5)) / 2
 
         return {
             "executive_summary": executive_summary,
@@ -530,9 +679,13 @@ class MarketAnalyzer:
             },
             "qualitative_analysis": {
                 "trend": qualitative_trend,
+                "finbert_average_score": avg_finbert_score,
+                "finbert_average_label": avg_finbert_label,
                 "positive_news_count": positive_count,
                 "negative_news_count": negative_count,
-                "headlines_sample": headlines[:3]
+                "neutral_news_count": neutral_count,
+                "headlines_sample": headlines[:3],
+                "finbert_results": finbert_result.get("results", [])[:5]  # Simpan 5 hasil teratas
             },
             "combined_analysis": {
                 "quantitative_sentiment": quantitative_trend,
@@ -547,7 +700,7 @@ class SentimentScorer:
     @staticmethod
     def calculate_sentiment_score(analysis_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Hitung skor sentimen 1-10
+        Hitung skor sentimen 1-10 menggunakan FinBERT (DLAnalyzer)
 
         Args:
             analysis_data: Hasil analisis dari MarketAnalyzer
@@ -573,31 +726,12 @@ class SentimentScorer:
         else:
             q_score = 1
 
-        # Skor kualitatif (berdasarkan berita)
-        positive = analysis_data.get("qualitative_analysis", {}).get("positive_news_count", 0)
-        negative = analysis_data.get("qualitative_analysis", {}).get("negative_news_count", 0)
-
-        total = positive + negative
-        if total > 0:
-            positive_ratio = positive / total
-        else:
-            positive_ratio = 0.5
-
-        # Mapping ratio ke skor 1-10
-        if positive_ratio >= 0.9:
-            k_score = 10
-        elif positive_ratio >= 0.7:
-            k_score = 8
-        elif positive_ratio >= 0.6:
-            k_score = 7
-        elif positive_ratio >= 0.4:
-            k_score = 5
-        elif positive_ratio >= 0.3:
-            k_score = 3
-        elif positive_ratio >= 0.1:
-            k_score = 2
-        else:
-            k_score = 1
+        # Skor kualitatif dari FinBERT (sudah di-calculate di DLAnalyzer)
+        finbert_avg_score = analysis_data.get("qualitative_analysis", {}).get("finbert_average_score", 5.0)
+        
+        # Konversi FinBERT score (1-10) ke k_score
+        # FinBERT sudah return 1-10, langsung gunakan
+        k_score = round(finbert_avg_score)
 
         # Skor gabungan (bobot: 40% kuantitatif, 60% kualitatif)
         final_score = round((q_score * 0.4) + (k_score * 0.6))
@@ -614,14 +748,21 @@ class SentimentScorer:
         else:
             label = "Sangat Negatif"
 
+        # Breakdown dari FinBERT
+        finbert_breakdown = analysis_data.get("qualitative_analysis", {}).get("finbert_results", [])
+
         return {
             "score": final_score,
             "label": label,
             "breakdown": {
                 "quantitative_score": q_score,
                 "quantitative_weight": "40%",
-                "qualitative_score": k_score,
-                "qualitative_weight": "60%"
+                "finbert_score": finbert_avg_score,
+                "qualitative_weight": "60%",
+                "finbert_positive_count": analysis_data.get("qualitative_analysis", {}).get("positive_news_count", 0),
+                "finbert_negative_count": analysis_data.get("qualitative_analysis", {}).get("negative_news_count", 0),
+                "finbert_neutral_count": analysis_data.get("qualitative_analysis", {}).get("neutral_news_count", 0),
+                "finbert_results_sample": finbert_breakdown[:3]
             },
             "interpretation": f"Skor {final_score}/10 menunjukkan sentiment {label.lower()}"
         }
