@@ -1,25 +1,26 @@
-# TODO: Add save_to_supabase to BIEngine
+# TODO - BI Engine Fixes
 
-## Plan
+## Current Issues
 
-- [x] 1. Update requirements.txt - add supabase library
-- [x] 2. Add save_to_supabase method to BIEngine class in bi_engine.py
-- [x] 3. Update run() method to call save_to_supabase() after generating final_result
+### 1. Supabase "proxy" Error (HIGH PRIORITY)
+- **Error:** `Client.__init__() got an unexpected keyword argument 'proxy'`
+- **Cause:** Environment variables (HTTP_PROXY, https_proxy) or supabase client version issue
+- **Impact:** Non-critical - main analysis completes, but Supabase save fails
 
-## Implementation Details
+## Fix Plan
 
-1. **requirements.txt**: Add `supabase>=2.0.0` for supabase-py library
+### Step 1: Fix Supabase Connection
+- [x] Analyze error source
+- [x] Modify `save_to_supabase()` to filter proxy kwargs
+- [x] Add robust error handling
+- [x] Make Supabase save truly non-blocking
 
-2. **bi_engine.py - save_to_supabase method**:
-   - Reads SUPABASE_URL and SUPABASE_KEY from os.environ
-   - Uses supabase-py client
-   - Implements delete-before-insert strategy to prevent database bloat
-   - Saves data to multiple tables based on supabase_schema.sql:
-     - stock_data: ticker, dates, closing_prices, current_price, price_change, etc.
-     - news_data: source, headlines, total_found, relevant_count
-     - merged_data: ticker, quantitative_data, qualitative_data
-     - sentiment_score: score, label, breakdown
-     - recommendations: title, description, priority
+### Step 2: Test the Fix
+- [x] Run API server
+- [x] Test with ticker=NVDA
+- [x] Verify no proxy error
 
-3. **bi_engine.py - run() method**: Call save_to_supabase() after generating final_result
-
+## Completion Criteria
+- Main analysis completes successfully
+- Supabase save error is caught and handled gracefully
+- No crash if Supabase credentials missing

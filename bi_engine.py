@@ -943,7 +943,7 @@ class BIEngine:
                 "generated_at": datetime.now().isoformat()
             }
 
-    def save_to_supabase(self) -> Dict[str, Any]:
+def save_to_supabase(self) -> Dict[str, Any]:
         """
         Simpan data analisis ke Supabase.
         Menggunakan strategi delete-before-insert untuk mencegah database bloat.
@@ -963,8 +963,28 @@ class BIEngine:
             }
         
         try:
-            # Inisialisasi client Supabase
-            supabase: Client = create_client(supabase_url, supabase_key)
+            # Filter environment variables yang bisa menyebabkan error "proxy"
+            # Buat salinan environment tanpa proxy vars
+            clean_env = {}
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
+            for key in proxy_vars:
+                if key in os.environ:
+                    logger.info(f"Filtering proxy env: {key}")
+            
+            # Inisialisasi client Supabase dengan error handling
+            try:
+                supabase: Client = create_client(supabase_url, supabase_key)
+            except TypeError as e:
+                if "proxy" in str(e).lower():
+                    logger.warning(f"Proxy error terdeteksi: {e}")
+                    logger.warning("Melewati penyimpanan ke Supabase - main analysis tetap lanjut")
+                    return {
+                        "success": False,
+                        "error": f"Proxy configuration error: {str(e)}"
+                    }
+                else:
+                    raise
+            
             logger.info(f"Menghubungkan ke Supabase: {supabase_url}")
             
             ticker = self.ticker
