@@ -185,8 +185,7 @@ async def health_check() -> dict:
 @app.get("/api/bi")
 async def analyze_stock(
     ticker: str = Query(..., min_length=1, max_length=10),
-    force_refresh: bool = Query(False),
-    test_supabase: bool = Query(False, description="Test Supabase connection and return debug info")
+    force_refresh: bool = Query(False)
 ):
     """
     Endpoint utama: Analisis lengkap
@@ -202,18 +201,6 @@ async def analyze_stock(
         # Jalankan BI Engine
         engine = BIEngine(ticker_upper)
         result = engine.run()
-
-        # Jika test_supabase=True, tambahkan info debug
-        if test_supabase:
-            import os
-            supabase_url = os.environ.get("SUPABASE_URL")
-            supabase_key = os.environ.get("SUPABASE_KEY")
-            
-            result["debug_supabase"] = {
-                "url_found": bool(supabase_url),
-                "key_found": bool(supabase_key),
-                "url_value": supabase_url[:30] + "..." if supabase_url else None,
-            }
 
         if result.get("status") == "success":
             return result
@@ -335,65 +322,6 @@ async def list_cache() -> dict:
         return {"status": "success", "caches": caches}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# Endpoint: Test Supabase connection
-@app.get("/api/supabase/test")
-async def test_supabase_connection() -> dict:
-    """Test koneksi ke Supabase"""
-    try:
-        import os
-        from supabase import create_client, Client
-        
-        supabase_url = os.environ.get("SUPABASE_URL")
-        supabase_key = os.environ.get("SUPABASE_KEY")
-        
-        result = {
-            "success": False,
-            "supabase_url_found": bool(supabase_url),
-            "supabase_key_found": bool(supabase_key)
-        }
-        
-        if not supabase_url or not supabase_key:
-            result["error"] = "SUPABASE_URL atau SUPABASE_KEY tidak ditemukan di environment variables"
-            return result
-        
-        # Coba koneksi
-        supabase: Client = create_client(supabase_url, supabase_key)
-        result["client_created"] = True
-        
-        # Coba query ke stock_data
-        try:
-            response = supabase.table("stock_data").select("ticker").limit(1).execute()
-            result["stock_data_access"] = True
-            result["stock_data_count"] = len(response.data)
-        except Exception as e:
-            result["stock_data_error"] = str(e)
-        
-        # Coba query ke news_data
-        try:
-            response = supabase.table("news_data").select("source").limit(1).execute()
-            result["news_data_access"] = True
-        except Exception as e:
-            result["news_data_error"] = str(e)
-        
-        # Coba query ke cache
-        try:
-            response = supabase.table("cache").select("cache_key").limit(1).execute()
-            result["cache_access"] = True
-        except Exception as e:
-            result["cache_error"] = str(e)
-        
-        result["success"] = True
-        result["message"] = "Koneksi ke Supabase berhasil!"
-        
-        return result
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
 
 
 # ==================== POST ENDPOINTS ====================
