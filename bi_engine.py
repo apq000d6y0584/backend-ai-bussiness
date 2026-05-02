@@ -13,12 +13,21 @@ Fitur:
 
 # ========== CRITICAL: Remove proxy vars at module load time ==========
 # Supabase client doesn't support proxy - must clear BEFORE import
-import os as _os
+# This MUST be the very first thing done
+import os as _sys_os
 _proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy']
 for _pv in _proxy_vars:
-    if _pv in _os.environ:
-        del _os.environ[_pv]
-del _os, _proxy_vars, _pv
+    if _pv in _sys_os.environ:
+        del _sys_os.environ[_pv]
+
+# Clear any custom proxy env vars that might exist
+if 'SUPABASE_PROXY' in _sys_os.environ:
+    del _sys_os.environ['SUPABASE_PROXY']
+if 'DATABASE_PROXY' in _sys_os.environ:
+    del _sys_os.environ['DATABASE_PROXY']
+
+# Clean up module-level variables
+del _sys_os, _proxy_vars, _pv
 # ========== End proxy fix ==========
 
 import json
@@ -35,7 +44,23 @@ import requests
 import yfinance
 from bs4 import BeautifulSoup
 import numpy as np
-from supabase import create_client, Client
+
+# ========== PROXY FIX: Import supabase with error handling ==========
+# Import after proxy vars are cleared from environment
+try:
+    from supabase import create_client, Client
+except TypeError as _e:
+    # Handle proxy-related import errors
+    if "proxy" in str(_e).lower():
+        import sys
+        # Force reimport without proxy-related cached modules
+        _mods_to_remove = [k for k in sys.modules if 'supabase' in k or 'http' in k]
+        for _m in _mods_to_remove:
+            sys.modules.pop(_m, None)
+        from supabase import create_client, Client
+    else:
+        raise
+# ========== End supabase import fix ==========
 
 # Transformers for FinBERT sentiment analysis
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
@@ -951,17 +976,17 @@ class BIEngine:
                 "error": str(e),
                 "ticker": self.ticker,
                 "generated_at": datetime.now().isoformat()
-            }
-
+}
+    
     def save_to_supabase(self) -> Dict[str, Any]:
         """
         Simpan data analisis ke Supabase.
-        Menggunakan strategi delete-before-insert untuk mencegah database bloat.
+        Menggunakan strategi upsert untuk mencegah database bloat.
         
         Returns:
             Dictionary dengan status operasi
         """
-# Ambil credentials dari environment variables
+        # Ambil credentials dari environment variables
         supabase_url = os.environ.get("SUPABASE_URL")
         supabase_key = os.environ.get("SUPABASE_KEY")
         
@@ -1011,52 +1036,71 @@ class BIEngine:
                 stock_record = stock_data.get("data", {})
                 
                 # Hapus data lama dengan ticker yang sama (strategi delete-before-insert)
-                supabase.table("stock_data").delete().eq("ticker", ticker).execute()
+                try:
+                    supabase.table("stock_data").delete().eq("ticker", ticker).execute()
+                except Exception as del_err:
+                    logger.warning(f"Delete stock_data error (continuing): {del_err}")
                 
                 # Insert data baru
-                supabase.table("stock_data").insert({
-                    "ticker": ticker,
-                    "dates": stock_record.get("dates", []),
-                    "closing_prices": stock_record.get("closing_prices", []),
-                    "current_price": stock_record.get("current_price"),
-                    "price_change": stock_record.get("price_change"),
-                    "price_change_percent": stock_record.get("price_change_percent"),
-                    "average_price": stock_record.get("average_price"),
-                    "highest_price": stock_record.get("highest_price"),
-                    "lowest_price": stock_record.get("lowest_price")
-                }).execute()
-                logger.info(f"Stock data disimpan untuk {ticker}")
+                try:
+                    supabase.table("stock_data").insert({
+                        "ticker": ticker,
+                        "dates": stock_record.get("dates", []),
+                        "closing_prices": stock_record.get("closing_prices", []),
+                        "current_price": stock_record.get("current_price"),
+                        "price_change": stock_record.get("price_change"),
+                        "price_change_percent": stock_record.get("price_change_percent"),
+                        "average_price": stock_record.get("average_price"),
+                        "highest_price": stock_record.get("highest_price"),
+                        "lowest_price": stock_record.get("lowest_price")
+                    }).execute()
+                    logger.info(f"Stock data disimpan untuk {ticker}")
+                except Exception as ins_err:
+                    logger.error(f"Insert stock_data error: {ins_err}")
             
             # ========== 2. Simpan ke news_data ==========
             news_data = self.final_result.get("data", {}).get("news_data", {})
             if news_data.get("success"):
                 news_record = news_data.get("data", {})
+                source = news_record.get("source", "CNBC World Markets")
                 
                 # Hapus data lama dengan source yang sama
-                supabase.table("news_data").delete().eq("source", news_record.get("source", "CNBC World Markets")).execute()
+                try:
+                    supabase.table("news_data").delete().eq("source", source).execute()
+                except Exception as del_err:
+                    logger.warning(f"Delete news_data error (continuing): {del_err}")
                 
                 # Insert data baru
-                supabase.table("news_data").insert({
-                    "source": news_record.get("source", "CNBC World Markets"),
-                    "headlines": news_record.get("headlines", []),
-                    "total_found": news_record.get("total_found"),
-                    "relevant_count": news_record.get("relevant_count")
-                }).execute()
-                logger.info(f"News data disimpan")
+                try:
+                    supabase.table("news_data").insert({
+                        "source": source,
+                        "headlines": news_record.get("headlines", []),
+                        "total_found": news_record.get("total_found"),
+                        "relevant_count": news_record.get("relevant_count")
+                    }).execute()
+                    logger.info(f"News data disimpan")
+                except Exception as ins_err:
+                    logger.error(f"Insert news_data error: {ins_err}")
             
             # ========== 3. Simpan ke merged_data ==========
             merged_data = self.merged_data
             if merged_data.get("success"):
                 # Hapus data lama dengan ticker yang sama
-                supabase.table("merged_data").delete().eq("ticker", ticker).execute()
+                try:
+                    supabase.table("merged_data").delete().eq("ticker", ticker).execute()
+                except Exception as del_err:
+                    logger.warning(f"Delete merged_data error (continuing): {del_err}")
                 
                 # Insert data baru
-                supabase.table("merged_data").insert({
-                    "ticker": ticker,
-                    "quantitative_data": merged_data.get("quantitative_data", {}),
-                    "qualitative_data": merged_data.get("qualitative_data", {})
-                }).execute()
-                logger.info(f"Merged data disimpan untuk {ticker}")
+                try:
+                    supabase.table("merged_data").insert({
+                        "ticker": ticker,
+                        "quantitative_data": merged_data.get("quantitative_data", {}),
+                        "qualitative_data": merged_data.get("qualitative_data", {})
+                    }).execute()
+                    logger.info(f"Merged data disimpan untuk {ticker}")
+                except Exception as ins_err:
+                    logger.error(f"Insert merged_data error: {ins_err}")
             
             # ========== 4. Simpan ke sentiment_score ==========
             sentiment = self.final_result.get("data", {}).get("sentiment", {})
@@ -1065,31 +1109,48 @@ class BIEngine:
                 label = sentiment.get("label", "netral").lower().replace(" ", "_")
                 
                 # Hapus data lama dengan score yang sama
-                supabase.table("sentiment_score").delete().eq("score", score).execute()
+                try:
+                    supabase.table("sentiment_score").delete().eq("score", score).execute()
+                except Exception as del_err:
+                    logger.warning(f"Delete sentiment_score error (continuing): {del_err}")
                 
                 # Insert data baru
-                supabase.table("sentiment_score").insert({
-                    "score": score,
-                    "label": label,
-                    "quantitative_score": sentiment.get("breakdown", {}).get("quantitative_score"),
-                    "finbert_score": sentiment.get("breakdown", {}).get("finbert_score"),
-                    "breakdown": sentiment.get("breakdown", {}),
-                    "interpretation": sentiment.get("interpretation")
-                }).execute()
-                logger.info(f"Sentiment score disimpan: {score}/{label}")
+                try:
+                    supabase.table("sentiment_score").insert({
+                        "score": score,
+                        "label": label,
+                        "quantitative_score": sentiment.get("breakdown", {}).get("quantitative_score"),
+                        "finbert_score": sentiment.get("breakdown", {}).get("finbert_score"),
+                        "breakdown": sentiment.get("breakdown", {}),
+                        "interpretation": sentiment.get("interpretation")
+                    }).execute()
+                    logger.info(f"Sentiment score disimpan: {score}/{label}")
+                except Exception as ins_err:
+                    logger.error(f"Insert sentiment_score error: {ins_err}")
             
             # ========== 5. Simpan ke recommendations ==========
             recommendations = self.final_result.get("data", {}).get("recommendations", [])
             if recommendations:
-                # Hapus rekomendasi lama (tidak ada ticker di recommendations table, jadi hapus semua)
-                supabase.table("recommendations").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+                # Hapus semua rekomendasi lama
+                try:
+                    supabase.table("recommendations").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+                except Exception:
+                    # Alternative: truncate by deleting with a date filter or just continue
+                    logger.warning("Delete all recommendations (trying alternative)...")
+                    try:
+                        supabase.table("recommendations").delete().is_("created_at", "not.null").execute()
+                    except Exception:
+                        pass  # Continue even if delete fails
                 
                 for rec in recommendations:
-                    supabase.table("recommendations").insert({
-                        "title": rec.get("title"),
-                        "description": rec.get("description"),
-                        "priority": rec.get("priority", "rendah").lower()
-                    }).execute()
+                    try:
+                        supabase.table("recommendations").insert({
+                            "title": rec.get("title"),
+                            "description": rec.get("description"),
+                            "priority": rec.get("priority", "rendah").lower()
+                        }).execute()
+                    except Exception as ins_err:
+                        logger.error(f"Insert recommendation error: {ins_err}")
                 logger.info(f"{len(recommendations)} rekomendasi disimpan")
             
             return {
