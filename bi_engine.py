@@ -11,6 +11,16 @@ Fitur:
 6. 3 Rekomendasi bisnis
 """
 
+# ========== CRITICAL: Remove proxy vars at module load time ==========
+# Supabase client doesn't support proxy - must clear BEFORE import
+import os as _os
+_proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy']
+for _pv in _proxy_vars:
+    if _pv in _os.environ:
+        del _os.environ[_pv]
+del _os, _proxy_vars, _pv
+# ========== End proxy fix ==========
+
 import json
 import re
 import time
