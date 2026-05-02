@@ -929,7 +929,7 @@ class BIEngine:
 
             logger.info(f"BI Engine selesai untuk {self.ticker}")
             
-            # Simpan data ke Supabase jika environment variables tersedia
+# Simpan data ke Supabase jika environment variables tersedia
             self.save_to_supabase()
             
             return self.final_result
@@ -943,7 +943,7 @@ class BIEngine:
                 "generated_at": datetime.now().isoformat()
             }
 
-def save_to_supabase(self) -> Dict[str, Any]:
+    def save_to_supabase(self) -> Dict[str, Any]:
         """
         Simpan data analisis ke Supabase.
         Menggunakan strategi delete-before-insert untuk mencegah database bloat.
