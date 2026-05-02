@@ -951,7 +951,7 @@ class BIEngine:
         Returns:
             Dictionary dengan status operasi
         """
-        # Ambil credentials dari environment variables
+# Ambil credentials dari environment variables
         supabase_url = os.environ.get("SUPABASE_URL")
         supabase_key = os.environ.get("SUPABASE_KEY")
         
@@ -961,15 +961,20 @@ class BIEngine:
                 "success": False,
                 "error": "SUPABASE_URL atau SUPABASE_KEY tidak ditemukan"
             }
-        
+
         try:
-            # Filter environment variables yang bisa menyebabkan error "proxy"
-            # Buat salinan environment tanpa proxy vars
-            clean_env = {}
+            # ========== PROXY FIX: Remove proxy environment variables ==========
+            # Supabase client doesn't support proxy argument, so we must unset these before creating client
             proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
+            proxy_removed = []
             for key in proxy_vars:
                 if key in os.environ:
-                    logger.info(f"Filtering proxy env: {key}")
+                    proxy_removed.append(key)
+                    del os.environ[key]
+            
+            # Log only if proxy vars were actually found and removed
+            if proxy_removed:
+                logger.info(f"Removed proxy env vars: {', '.join(proxy_removed)}")
             
             # Inisialisasi client Supabase dengan error handling
             try:
