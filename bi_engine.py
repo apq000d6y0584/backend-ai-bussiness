@@ -51,20 +51,28 @@ from bs4 import BeautifulSoup
 import numpy as np
 
 # ========== PROXY FIX: Import supabase with error handling ========== 
+# Supabase is optional for this module; import failures should not prevent API startup.
 try:
-    from supabase import create_client, Client
+    from supabase import create_client, Client  # type: ignore
+except ModuleNotFoundError:
+    create_client = None  # type: ignore
+    Client = None  # type: ignore
 except TypeError as _e:
     if "proxy" in str(_e).lower():
         import sys
         _mods_to_remove = [k for k in sys.modules if 'supabase' in k or 'http' in k]
         for _m in _mods_to_remove:
             sys.modules.pop(_m, None)
-        from supabase import create_client, Client
+        from supabase import create_client, Client  # type: ignore
     else:
         raise
 # ========== End supabase import fix ========== 
 
-from transformers import pipeline
+# transformers is heavy/optional; allow API startup without it.
+try:
+    from transformers import pipeline  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    pipeline = None  # type: ignore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -332,5 +340,175 @@ class NewsScraper:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*",
     }
+
+    @staticmethod
+    def get_world_markets_news() -> Dict[str, Any]:
+        """Return a lightweight news payload.
+
+        Note: If scraping fails, return cached/empty fallback instead of raising.
+        """
+        cache_key = "news_world_markets"
+        cached = CacheManager.get("news", cache_key)
+        if cached:
+            return {"success": True, "source": "cnbc", "data": cached, "fallback_strategy": "cache"}
+
+        url = "https://www.cnbc.com/world/?region=world"
+        try:
+            resp = requests.get(url, headers=NewsScraper.HEADERS, timeout=15)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            # Heuristic: collect headline-like elements
+            headlines: List[str] = []
+            for tag in soup.find_all(['h1', 'h2', 'h3']):
+                txt = tag.get_text(strip=True)
+                if not txt:
+                    continue
+                if any(k.lower() in txt.lower() for k in BUSINESS_KEYWORDS) or len(txt) >= 20:
+                    headlines.append(txt)
+                if len(headlines) >= 20:
+                    break
+
+            payload = {
+                "headlines": headlines,
+                "count": len(headlines),
+            }
+            CacheManager.set("news", cache_key, payload)
+            return {"success": True, "source": "cnbc", "data": payload, "fallback_strategy": None}
+        except Exception as e:
+            # Fallback: empty but successful so API can still respond
+            logger.warning(f"News scrape failed: {e}")
+            return {
+                "success": False,
+                "source": "cnbc",
+                "data": {"headlines": [], "count": 0},
+                "error": str(e),
+                "fallback_strategy": "empty"
+            }
+
+
+class BIEngine:
+    """Orchestrates stock data + news + sentiment + recommendations."""
+
+    def __init__(self, ticker: str):
+        self.ticker = ticker
+        self._sentiment_analyzer = DLAnalyzer()
+
+    def run(
+        self,
+        detail: str = "summary",
+        days: int = 7,
+        headline_limit: int = 10,
+        finbert_positive_threshold: float = 7.0,
+        finbert_negative_threshold: float = 4.0,
+        sentiment_positive_threshold: float = 7.0,
+        sentiment_negative_threshold: float = 3.0,
+    ) -> Dict[str, Any]:
+        generated_at = datetime.now().isoformat()
+
+        # Stock data
+        stock_result = StockDataCollector.get_closing_prices(self.ticker, days)
+        if not stock_result.get("success"):
+            return {
+                "status": "error",
+                "ticker": self.ticker,
+                "generated_at": generated_at,
+                "error": stock_result.get("error", "failed to fetch stock data"),
+                "data": None,
+            }
+
+        # News data
+        news_result = NewsScraper.get_world_markets_news()
+        headlines = (news_result.get("data") or {}).get("headlines") or []
+        headlines = [h for h in headlines if isinstance(h, str)][: int(headline_limit) or 10]
+
+        # Sentiment
+        sentiment = self._sentiment_analyzer.get_average_sentiment(headlines)
+        finbert_score = float(sentiment.get("score", 5.0))
+
+        # Quantitative analysis (simple heuristic)
+        closing_prices = (stock_result.get("data") or {}).get("closing_prices") or []
+        vol = VolatilityCalculator.calc_volatility(closing_prices)
+        price_change = float((stock_result.get("data") or {}).get("price_change_percent") or 0.0)
+
+        quantitative_analysis = {
+            "price_change_percent": price_change,
+            "volatility": vol.get("volatility", 0.0),
+            "volatility_percent": vol.get("volatility_percent", 0.0),
+        }
+
+        # Recommendations
+        # Use thresholds to create a deterministic output
+        if finbert_score >= finbert_positive_threshold and price_change >= 0:
+            recs = [
+                {"strategy": "Buy (positive momentum)", "confidence": round(min(0.99, 0.5 + finbert_score / 20), 2)},
+                {"strategy": "Hold / Accumulate on dips", "confidence": 0.62},
+                {"strategy": "Risk-managed entry", "confidence": 0.55},
+            ]
+            overall = "Bullish"
+        elif finbert_score <= finbert_negative_threshold or price_change < 0:
+            recs = [
+                {"strategy": "Avoid / Reduce exposure", "confidence": round(min(0.99, 0.5 + (10 - finbert_score) / 20), 2)},
+                {"strategy": "Wait for confirmation", "confidence": 0.65},
+                {"strategy": "Hedge with protective puts", "confidence": 0.58},
+            ]
+            overall = "Bearish"
+        else:
+            recs = [
+                {"strategy": "Neutral: Hold with monitoring", "confidence": 0.6},
+                {"strategy": "Scale in gradually", "confidence": 0.55},
+                {"strategy": "Focus on catalysts", "confidence": 0.52},
+            ]
+            overall = "Neutral"
+
+        # Sentiment + threshold mapping (server expects these names in some places)
+        if sentiment.get("label") and isinstance(sentiment["label"], str):
+            sentiment_label = sentiment["label"]
+        else:
+            sentiment_label = "Netral"
+
+        if sentiment_label.lower() in {"positif", "positive"}:
+            sentiment_category = "positive"
+        elif sentiment_label.lower() in {"negatif", "negative"}:
+            sentiment_category = "negative"
+        else:
+            sentiment_category = "neutral"
+
+        sentiment_payload = {
+            "score": finbert_score,
+            "label": sentiment_label,
+            "category": sentiment_category,
+            "breakdown": sentiment.get("breakdown", {}),
+        }
+
+        analysis_payload = {
+            "quantitative_analysis": quantitative_analysis,
+            "volatility_analysis": vol,
+            "overall": overall,
+        }
+
+        # Build response based on detail
+        data: Dict[str, Any] = {
+            "stock_data": stock_result.get("data"),
+            "news_data": news_result.get("data"),
+            "sentiment": sentiment_payload,
+            "recommendations": recs,
+            "analysis": analysis_payload,
+        }
+
+        if detail == "summary":
+            # remove long news headlines list if present
+            if isinstance(data.get("news_data"), dict):
+                data["news_data"] = {
+                    "count": data["news_data"].get("count", 0),
+                }
+
+        return {
+            "status": "success",
+            "ticker": self.ticker,
+            "generated_at": generated_at,
+            "data": data,
+        }
+
 
 
