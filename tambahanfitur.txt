@@ -1,0 +1,32 @@
+
+2) 
+3) 
+4)
+5) 
+6) Visualisasi lanjutan
+Chart sentiment: timeline atau bar “sentimen tiap headline” (atau agregasi per batch).
+Highlight top headline: headline teratas dipin berdasarkan mapped_score positif/negatif.
+Band risk/volatility: tambah metrik dari harga (mis. range/standard deviation 7 hari).
+7) Fitur API/user management (opsional tapi berguna)
+API key / rate limit per user (kalau deployment publik).
+Login + personalized watchlist (persist ke database).
+Multi-user audit log: siapa melakukan apa (untuk debugging dan kepatuhan).
+8) Fitur administrasi untuk developer/operator (berdampak langsung ke user)
+UI untuk cache management: tombol “refresh paksa” dan “lihat cache status”.
+Monitoring backend: halaman health + status model load (FinBERT) dan throughput.
+Jika kamu mau, aku bisa rapikan daftar ini menjadi prioritas (MVP vs Later) dan format user story + acceptance criteria.
+
+
+Task Completed
+Daftar fitur yang perlu ditambahkan untuk user:
+
+Riwayat analisis per ticker + watchlist/favorites
+Auto-refresh terkontrol untuk watchlist
+Export hasil (JSON/CSV) + share/deep link
+Explainability: top drivers (headline positif/negatif), breakdown skor (40% price, 60% sentiment), confidence/kualitas input
+Kontrol parameter: horizon harga (5/10/30), jumlah headline, mode summary/full, threshold rekomendasi
+Rekomendasi lebih actionable: rule-of-thumb entry/exit + stop-loss/take-profit + bull/bear/base scenarios + disclaimer
+Kualitas data: status komponen, fallback & retry/backoff yang lebih informatif
+Visualisasi lanjutan: chart sentiment/timeline, highlight headline top, metrik volatilitas
+(Opsional) Login + API key/rate limit + persist watchlist
+(Operasional) UI cache management + monitoring backend/health model

@@ -90,6 +90,8 @@ class StockResponse(BaseModel):
     ticker: str
     data: Optional[dict] = None
     error: Optional[str] = None
+    data_quality: Optional[dict] = None
+
 
 
 class NewsResponse(BaseModel):
@@ -98,6 +100,10 @@ class NewsResponse(BaseModel):
     source: str
     data: Optional[dict] = None
     error: Optional[str] = None
+    # kualitas data / fallback info
+    fallback_strategy: Optional[str] = None
+    data_quality: Optional[dict] = None
+
 
 
 class BIResponse(BaseModel):
@@ -114,6 +120,8 @@ class SentimentResponse(BaseModel):
     ticker: str
     sentiment: Optional[dict] = None
     recommendations: Optional[List[dict]] = None
+    data_quality: Optional[dict] = None
+
 
 
 class CacheResponse(BaseModel):
@@ -185,14 +193,31 @@ async def health_check() -> dict:
 @app.get("/api/bi")
 async def analyze_stock(
     ticker: str = Query(..., min_length=1, max_length=10),
-    force_refresh: bool = Query(False)
+    force_refresh: bool = Query(False),
+    detail: str = Query("summary", description="summary|full payload"),
+    days: int = Query(7, ge=1, le=30, description="Horizon harga (days)"),
+    headline_limit: int = Query(10, ge=5, le=20, description="Jumlah headline untuk FinBERT"),
+    # thresholds (baseline mengikuti hardcode saat ini)
+    finbert_positive_threshold: float = Query(7.0, ge=0, le=10),
+    finbert_negative_threshold: float = Query(4.0, ge=0, le=10),
+    sentiment_positive_threshold: float = Query(7.0, ge=0, le=10),
+    sentiment_negative_threshold: float = Query(3.0, ge=0, le=10)
 ):
     """
-    Endpoint utama: Analisis lengkap
+    Endpoint utama: Analisis
+
+    detail:
+      - summary (default): payload ringan
+      - full: payload lengkap
     """
     try:
         # Normalisasi ticker
         ticker_upper = ticker.upper()
+
+        detail = (detail or "summary").lower()
+        if detail not in {"summary", "full"}:
+            raise HTTPException(status_code=422, detail="Invalid detail. Use summary|full")
+
         
         # Validasi Regex (Pastikan 'import re' ada di paling atas)
         if not re.match(r'^[A-Z0-9.\-]+$', ticker_upper):
@@ -200,7 +225,17 @@ async def analyze_stock(
 
         # Jalankan BI Engine
         engine = BIEngine(ticker_upper)
-        result = engine.run()
+        result = engine.run(
+            detail=detail,
+            days=days,
+            headline_limit=headline_limit,
+            finbert_positive_threshold=finbert_positive_threshold,
+            finbert_negative_threshold=finbert_negative_threshold,
+            sentiment_positive_threshold=sentiment_positive_threshold,
+            sentiment_negative_threshold=sentiment_negative_threshold
+        )
+
+
 
         if result.get("status") == "success":
             return result
