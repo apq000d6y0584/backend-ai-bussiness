@@ -1,12 +1,18 @@
 # TODO - Fitur Kualitas Data & Keandalan
 
-## Target
-Implementasi:
-- Fallback CNBC yang lebih rapi: jika scraping CNBC gagal → jelaskan “menggunakan data terakhir / data parsial”.
-- Indikator status data: loading state per komponen (price ready / news ready / sentiment ready).
-- Retry + backoff untuk error sementara (network/rate limit).
+## Build/Deploy reliability
+- Railway build fix (mise python@3.11.9 attestation verification failure)
 
-## Checklist langkah
+### Checklist langkah
+1. [x] Tambah `mise.toml` di root untuk menonaktifkan `python.github_attestations` agar `mise install` tidak gagal saat deploy.
+2. [ ] Trigger ulang build/deploy Railway dan pastikan langkah `mise install python@3.11.9` sukses.
+
+## Implementasi
+ - Fallback CNBC yang lebih rapi: jika scraping CNBC gagal → jelaskan “menggunakan data terakhir / data parsial”.
+ - Indikator status data: loading state per komponen (price ready / news ready / sentiment ready).
+ - Retry + backoff untuk error sementara (network/rate limit).
+
+## Checklist langkah (kualitas data)
 1. [ ] Tambah retry + exponential backoff + status kualitas/fallback cache untuk scraping CNBC di `bi_engine.py`.
 2. [ ] Ubah `BIEngine` agar tetap bisa menghasilkan analisis parsial saat news gagal (tetap kirim metadata kualitas per komponen).
 3. [ ] Tambah endpoint usage di `api_server.py` bila perlu agar komponen bisa di-fetch terpisah.
