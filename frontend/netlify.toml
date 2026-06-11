@@ -1,0 +1,27 @@
+# Netlify configuration for Next.js (App Router)
+
+[build]
+  # Keep defaults; build/publish are usually set in Netlify UI.
+
+# NOTE:
+# For a Next.js app deployed with `.next` as the publish directory,
+# we must NOT rewrite `/_next/*` requests to `/index.html`.
+# Otherwise Next static chunks return HTML (wrong MIME type) and fail to load.
+#
+# Keep Netlify rules focused and avoid catch-all rewrites.
+
+# Ensure `_next/*` and `_next/static/*` assets are served as-is (avoid HTML fallback -> wrong MIME).
+[[redirects]]
+  from = "/_next/static/*"
+  to = "/_next/static/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/_next/*"
+  to = "/_next/:splat"
+  status = 200
+  force = true
+
+
+

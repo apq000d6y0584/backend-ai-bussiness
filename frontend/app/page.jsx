@@ -11,7 +11,8 @@ import PriceChart from './components/PriceChart';
 import RecommendationsList from './components/RecommendationsList';
 import NewsList from './components/NewsList';
 import TransparencyExplainability from './components/TransparencyExplainability';
-import { fetchAnalyze, createRealtimeAnalyzeSocket } from '@/lib/api';
+import IhsgDashboard from './components/IhsgDashboard';
+import { fetchAnalyze, createRealtimeAnalyzeSocket, fetchIHsgDashboard } from '@/lib/api';
 
 export default function Page() {
   const [ticker, setTicker] = useState('AAPL');

@@ -22,7 +22,7 @@ import sys
 import os
   
 
-from bi_engine import BIEngine, CacheManager, StockDataCollector, NewsScraper
+from bi_engine import BIEngine, CacheManager, StockDataCollector, NewsScraper, IHSGDashboardEngine
 
 # ==================== PYDANTIC MODELS ====================
 
@@ -437,6 +437,29 @@ async def graphql_query(
 
 # ==================== WEBSOCKET (Optional) ====================
 from fastapi import WebSocket
+
+# ==================== IHSG DASHBOARD (price-only heuristic) ====================
+@app.get("/api/ihsg-dashboard")
+async def ihsg_dashboard(
+    window_days: int = Query(30, ge=5, le=180, description="Horizon window untuk ranking"),
+    top_n: int = Query(5, ge=3, le=20, description="Jumlah saham per kategori"),
+    price_horizon_days: int = Query(200, ge=60, le=500, description="Horizon panjang untuk multibagger/bagholder proxy")
+) -> dict:
+    """IHSG dashboard (price-only heuristic).
+
+    Karena repo saat ini belum punya fundamental IHSG, kategori growth/value/value trap/zombie dibuat sebagai proxy berbasis harga.
+    """
+    try:
+        engine = IHSGDashboardEngine()
+        payload = engine.run(
+            window_days=window_days,
+            top_n=top_n,
+            price_horizon_days=price_horizon_days,
+        )
+        return payload
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

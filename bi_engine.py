@@ -387,12 +387,238 @@ class NewsScraper:
             }
 
 
+class IHSGDashboardEngine:
+    """Price-only heuristic IHSG dashboard engine.
+
+    Karena opsi yang dipilih adalah nomor (1): hanya berbasis harga (yfinance).
+    Kategori growth/value/bullish/bearish/multibagger/bagholder/value_trap/zombie dibuat sebagai proxy berbasis
+    momentum, drawdown, volatilitas, dan return beberapa horizon.
+    """
+
+    # Hardcoded small universe (±20 likuid) menggunakan format yfinance '.JK'
+    # Note: Jika yfinance tidak menemukan ticker tertentu, engine akan skip.
+    IHSG_UNIVERSE_JK = [
+        "BBCA.JK", "BMRI.JK", "BBRI.JK", "TLKM.JK", "ASII.JK", "UNTR.JK", "MDKA.JK", "ANTM.JK",
+        "KLBF.JK", "BBTN.JK", "ADRO.JK", "PTBA.JK", "BRPT.JK", "SMGR.JK", "TLKM.JK",
+        "INCO.JK", "CTRA.JK", "GOTO.JK", "KLBF.JK", "AKRA.JK"
+    ]
+
+    @staticmethod
+    def _safe_float(x: Any, default: float = 0.0) -> float:
+        try:
+            if x is None:
+                return default
+            return float(x)
+        except Exception:
+            return default
+
+    @staticmethod
+    def _calc_return_pct(closing_prices: List[float]) -> float:
+        if not isinstance(closing_prices, list) or len(closing_prices) < 2:
+            return 0.0
+        start = closing_prices[0]
+        end = closing_prices[-1]
+        if start == 0:
+            return 0.0
+        return ((end - start) / start) * 100.0
+
+    @classmethod
+    def _get_universe_data(cls, ticker: str, window_days: int, price_horizon_days: int) -> Optional[Dict[str, Any]]:
+        # window_prices: untuk ranking (window_days)
+        # horizon_prices: untuk multibagger/bagholder proxy (price_horizon_days)
+        # yfinance collector hanya ambil 'days' closing prices, jadi kita panggil beberapa kali.
+        win = StockDataCollector.get_closing_prices(ticker, days=window_days)
+        hor = StockDataCollector.get_closing_prices(ticker, days=price_horizon_days)
+
+        if not win.get("success") or not hor.get("success"):
+            return None
+
+        win_prices = (win.get("data") or {}).get("closing_prices") or []
+        hor_prices = (hor.get("data") or {}).get("closing_prices") or []
+
+        window_return = cls._calc_return_pct(win_prices)
+        horizon_return = cls._calc_return_pct(hor_prices)
+
+        vol_window = VolatilityCalculator.calc_volatility(win_prices)
+        vol_horizon = VolatilityCalculator.calc_volatility(hor_prices)
+
+        # Drawdown proxy: (max - last) / max dalam window horizon.
+        max_price = max(hor_prices) if hor_prices else 0.0
+        last_price = hor_prices[-1] if hor_prices else 0.0
+        drawdown_pct = ((max_price - last_price) / max_price) * 100.0 if max_price else 0.0
+
+        # Momentum rank helpers
+        momentum_score = window_return  # langsung; proxy paling sederhana
+
+        return {
+            "ticker": ticker,
+            "window_return_pct": round(window_return, 4),
+            "horizon_return_pct": round(horizon_return, 4),
+            "drawdown_pct": round(drawdown_pct, 4),
+            "volatility_window": float(vol_window.get("volatility_percent", 0.0)),
+            "volatility_horizon": float(vol_horizon.get("volatility_percent", 0.0)),
+        }
+
+    @classmethod
+    def _rank_top_bottom(cls, universe_rows: List[Dict[str, Any]], key: str, top_n: int) -> List[Dict[str, Any]]:
+        rows = [r for r in universe_rows if isinstance(r.get(key), (int, float))]
+        rows_sorted = sorted(rows, key=lambda x: x.get(key, 0.0))
+        bottom = rows_sorted[:top_n]
+        top = rows_sorted[-top_n:][::-1]
+        return {"top": top, "bottom": bottom}
+
+    @classmethod
+    def _score_item(cls, row: Dict[str, Any], primary: float, secondary: float = 0.0) -> float:
+        # Skor 0-100-ish; clamp
+        raw = primary * 1.0 + secondary * 0.2
+        return float(max(0.0, min(100.0, raw)))
+
+    @classmethod
+    def run(cls, window_days: int = 30, top_n: int = 5, price_horizon_days: int = 200) -> Dict[str, Any]:
+        generated_at = datetime.now().isoformat()
+
+        rows: List[Dict[str, Any]] = []
+        for t in cls.IHSG_UNIVERSE_JK:
+            data = cls._get_universe_data(t, window_days=window_days, price_horizon_days=price_horizon_days)
+            if data:
+                rows.append(data)
+
+        if not rows:
+            return {
+                "status": "success",
+                "generated_at": generated_at,
+                "window_days": window_days,
+                "price_horizon_days": price_horizon_days,
+                "universe_used": 0,
+                "categories": {
+                    "top_gainers": [],
+                    "top_losers": [],
+                    "growth_stocks": [],
+                    "value_stocks": [],
+                    "bullish_stocks": [],
+                    "bearish_stocks": [],
+                    "multibagger_stocks": [],
+                    "bagholder_stocks": [],
+                    "value_trap_stocks": [],
+                    "zombie_stocks": [],
+                }
+            }
+
+        key_return_window = "window_return_pct"
+        key_return_horizon = "horizon_return_pct"
+
+        ranked = cls._rank_top_bottom(rows, key_return_window, top_n=top_n)
+        top_gainers_rows = ranked["top"]
+        top_losers_rows = ranked["bottom"]
+
+        # growth vs value proxy:
+        # - growth: momentum tinggi + volatilitas cukup (aktif)
+        # - value: momentum rendah + volatilitas rendah (proxy “lebih stabil/murah relatif”) 
+        growth_candidates = sorted(
+            rows,
+            key=lambda r: (r.get("window_return_pct", 0.0) - (r.get("volatility_window", 0.0) * 0.02))
+        )
+        growth_candidates = growth_candidates[-top_n:][::-1]
+
+        value_candidates = sorted(
+            rows,
+            key=lambda r: (r.get("window_return_pct", 0.0) + (r.get("volatility_window", 0.0) * 0.01))
+        )
+        value_candidates = value_candidates[:top_n]
+
+        # bullish vs bearish proxy based on window return + volatility (risk-adjusted)
+        bullish_sorted = sorted(rows, key=lambda r: r.get("window_return_pct", 0.0) - r.get("volatility_window", 0.0) * 0.01)
+        bullish_rows = bullish_sorted[-top_n:][::-1]
+
+        bearish_sorted = sorted(rows, key=lambda r: r.get("window_return_pct", 0.0) - r.get("volatility_window", 0.0) * 0.01)
+        bearish_rows = bearish_sorted[:top_n]
+
+        # multibagger vs bagholder proxy based on horizon return and drawdown
+        multibagger_sorted = sorted(
+            rows,
+            key=lambda r: r.get("horizon_return_pct", 0.0) - (r.get("drawdown_pct", 0.0) * 0.05)
+        )
+        multibagger_rows = multibagger_sorted[-top_n:][::-1]
+
+        bagholder_sorted = sorted(
+            rows,
+            key=lambda r: r.get("horizon_return_pct", 0.0) - (r.get("drawdown_pct", 0.0) * 0.05)
+        )
+        bagholder_rows = bagholder_sorted[:top_n]
+
+        # value trap proxy: “value-like” (low momentum) but horizon return negatif
+        value_like = sorted(rows, key=lambda r: r.get("window_return_pct", 0.0))[: max(top_n * 2, top_n)]
+        value_trap_scored = sorted(
+            value_like,
+            key=lambda r: r.get("horizon_return_pct", 0.0)  # paling negatif dulu
+        )
+        value_trap_rows = value_trap_scored[:top_n]
+
+        # zombie proxy: low momentum + low volatility + horizon return mendekati nol/negatif
+        zombie_sorted = sorted(
+            rows,
+            key=lambda r: (abs(r.get("window_return_pct", 0.0)) * 0.2) + (r.get("volatility_window", 0.0) * 0.05) - r.get("horizon_return_pct", 0.0)
+        )
+        # Ambil kandidat dengan “paling zombie”: abs momentum kecil, volatility rendah, horizon return jelek
+        zombie_rows = zombie_sorted[:top_n]
+
+        def to_out_list(item_rows: List[Dict[str, Any]]):
+            out = []
+            for r in item_rows:
+                ret = float(r.get("window_return_pct", 0.0))
+                score = cls._score_item(r, primary=ret, secondary=-r.get("drawdown_pct", 0.0))
+                out.append({
+                    "ticker": r.get("ticker"),
+                    "return_pct": round(ret, 4),
+                    "volatility_percent": round(float(r.get("volatility_window", 0.0)), 4),
+                    "drawdown_pct": round(float(r.get("drawdown_pct", 0.0)), 4),
+                    "score": round(float(score), 2),
+                })
+            return out
+
+        # For categories that rely on horizon return, map return_pct to horizon for better semantics.
+        def to_out_list_horizon(item_rows: List[Dict[str, Any]]):
+            out = []
+            for r in item_rows:
+                ret = float(r.get("horizon_return_pct", 0.0))
+                score = cls._score_item(r, primary=ret, secondary=-r.get("drawdown_pct", 0.0))
+                out.append({
+                    "ticker": r.get("ticker"),
+                    "return_pct": round(ret, 4),
+                    "volatility_percent": round(float(r.get("volatility_horizon", 0.0)), 4),
+                    "drawdown_pct": round(float(r.get("drawdown_pct", 0.0)), 4),
+                    "score": round(float(score), 2),
+                })
+            return out
+
+        return {
+            "status": "success",
+            "generated_at": generated_at,
+            "window_days": window_days,
+            "price_horizon_days": price_horizon_days,
+            "universe_used": len(rows),
+            "categories": {
+                "top_gainers": to_out_list(top_gainers_rows),
+                "top_losers": to_out_list(top_losers_rows),
+                "growth_stocks": to_out_list(growth_candidates),
+                "value_stocks": to_out_list(value_candidates),
+                "bullish_stocks": to_out_list(bullish_rows),
+                "bearish_stocks": to_out_list(bearish_rows),
+                "multibagger_stocks": to_out_list_horizon(multibagger_rows),
+                "bagholder_stocks": to_out_list_horizon(bagholder_rows),
+                "value_trap_stocks": to_out_list(value_trap_rows),
+                "zombie_stocks": to_out_list(zombie_rows),
+            }
+        }
+
+
 class BIEngine:
     """Orchestrates stock data + news + sentiment + recommendations."""
 
     def __init__(self, ticker: str):
         self.ticker = ticker
         self._sentiment_analyzer = DLAnalyzer()
+
 
     def run(
         self,
