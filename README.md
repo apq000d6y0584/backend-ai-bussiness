@@ -56,15 +56,16 @@ Proyek ini telah dikonfigurasi menggunakan arsitektur jaringan industri untuk me
 | `/api/stock?ticker=AAPL` | Data harga saham 7 hari |
 | `/api/news` | Berita CNBC World Markets |
 | `/api/sentiment?ticker=AAPL` | Skor sentimen FinBERT (1-10) |
-| `/api/ihsg-dashboard` | **IHSG Market Dashboard** - Analisis heuristik tren harga saham Indonesia (Kategori: *Growth*, *Value*, *Value Trap*, *Zombie*, *Multibagger*, dan *Bagholder* proxy) |
+| `/api/ihsg-dashboard` | **IHSG Market Dashboard** - Analisis heuristik tren harga saham Indonesia |
 | `/docs` | **Swagger UI** - Dokumentasi interaktif |
 
 ### Frontend Dashboard (Port 3000 / Live Deployment)
-- ✅ Search bar untuk ticker saham eksternal
+- ✅ Search bar untuk ticker saham eksternal (global markets)
 - ✅ **Stock Chart** (Recharts - 7 hari closing prices)
 - ✅ **Sentiment Card** (FinBERT score 1-10 + progress bar)
 - ✅ **News Feed** (CNBC headlines scraping)
 - ✅ **Recommendations** (3 skala prioritas: tinggi/sedang/rendah)
+- ✅ **IHSG Market Intelligence Overview** (Analisis heuristik performa bursa lokal Indonesia berdasarkan pengelompokan *growth*, *value*, *value trap*, hingga *zombie* stocks)
 - ✅ Akselerasi UI (Loading states + Error handling yang aman)
 - ✅ Responsive design (Mobile-first menggunakan Tailwind CSS)
 
