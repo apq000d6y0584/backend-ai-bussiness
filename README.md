@@ -28,13 +28,13 @@ Dashboard berjalan di `http://localhost:3000`
 4. Masukkan ticker saham (AAPL, MSFT, TSLA, dll)
 5. Lihat hasil analisis lengkap dengan grafik, sentiment, berita, dan rekomendasi!
 
-## 🏗️ Arsitektur Jaringan (Production)
+## 🏗️ Arsitektur Jaringan & Integrasi Ekosistem (Production)
 
-Proyek ini telah dikonfigurasi menggunakan arsitektur jaringan industri untuk mengatasi masalah *Mixed Content* pada Vercel dengan mengamankan lalu lintas data menggunakan HTTPS penuh:
+Proyek *Full-Stack* ini telah diintegrasikan sepenuhnya di bawah naungan arsitektur server mandiri untuk mengatasi masalah *Mixed Content* dan mengoptimalkan kecepatan transfer data AI:
 
-*   **[ Cloud Hosting Frontend ]** (Vercel, Netlify, dll. - HTTPS)
+*   **[ Self-Hosted Frontend ]** (Next.js - Live: `https://business-intelligence.bonodigital.biz.id`)
     
-    ⬇️ *(HTTPS Api Call)*
+    ⬇️ *(HTTPS API Call)*
     
 *   **[ Cloudflare Proxy ]** (SSL Full Mode)
     
@@ -44,7 +44,7 @@ Proyek ini telah dikonfigurasi menggunakan arsitektur jaringan industri untuk me
     
     ⬇️ *(Internal Routing to Port 8000)*
     
-*   **[ FastAPI Backend ]** (Localhost HTTP)
+*   **[ FastAPI Backend ]** (Localhost HTTP - Engine Service: `https://bi-api.bonodigital.biz.id`)
 
 ## 🛠️ Fitur Sistem
 
@@ -65,7 +65,7 @@ Proyek ini telah dikonfigurasi menggunakan arsitektur jaringan industri untuk me
 - ✅ **Sentiment Card** (FinBERT score 1-10 + progress bar)
 - ✅ **News Feed** (CNBC headlines scraping)
 - ✅ **Recommendations** (3 skala prioritas: tinggi/sedang/rendah)
-- ✅ **IHSG Market Intelligence Overview** (Analisis heuristik performa bursa lokal Indonesia berdasarkan pengelompokan *growth*, *value*, *value trap*, hingga *zombie* stocks)
+- ✅ **IHSG Market Intelligence Overview** (Dasbor komprehensif untuk memantau pergerakan bursa saham domestik Indonesia.)
 - ✅ Akselerasi UI (Loading states + Error handling yang aman)
 - ✅ Responsive design (Mobile-first menggunakan Tailwind CSS)
 
@@ -83,54 +83,31 @@ SUPABASE_KEY=your_supabase_anon_key
 NEXT_PUBLIC_API_URL=https://bi-api.bonodigital.biz.id
 ```
 
-## 🌐 Panduan Produksi & Deployment
+## 🌐 Panduan Produksi & Deployment Backend
 
-Proyek ini dirancang dengan fleksibilitas tinggi dan dapat di-deploy menggunakan dua pendekatan arsitektur yang berbeda, sesuai dengan kebutuhan skala lingkungan kerja Anda:
+Aplikasi backend ini dirancang untuk di-deploy secara mandiri (*self-hosted*) menggunakan infrastruktur **Alibaba Cloud ECS (IaaS)** yang dikombinasikan dengan **Cloudflare Proxy**. 
 
-### ⚡ Opsi 1: Cloud PaaS (Railway / Render / Heroku) - *Untuk Evaluasi Cepat*
-Jika Anda melakukan *cloning* proyek ini untuk kebutuhan pengujian cepat atau lingkungan *staging*, Anda dapat menggunakan layanan PaaS instan:
-1. Hubungkan repositori hasil *clone* Anda ke panel **Railway**, **Render**, atau **Heroku**.
-2. Konfigurasikan Environment Variables berikut di panel penyedia layanan:
-   - `SUPABASE_URL`
-   - `SUPABASE_KEY`
-3. Tentukan perintah start server: `uvicorn api_server:app --host 0.0.0.0 --port 8000`.
-4. Jalankan Deployment.
+> **⚠️ Catatan Penilaian Capstone:**
+> Pemilihan infrastruktur mandiri ini dilakukan sebagai bukti keseriusan tim dalam membangun sistem yang matang (*enterprise-ready*), memiliki kontrol penuh atas performa server, efisiensi biaya komputasi AI (FinBERT), serta implementasi isolasi jaringan internal via Nginx Reverse Proxy.
 
----
+### 1. Otomatisasi Deployment Backend (via Script)
+Untuk mempermudah proses pembaruan dan instalasi di server produksi (ECS), proyek ini telah dilengkapi dengan skrip otomatisasi deployment `deploy_ecs.sh`:
 
-### 🏛️ Opsi 2: Production-Grade Infrastructure (Alibaba Cloud ECS + Cloudflare) - *Arsitektur Utama & Rekomendasi*
-> **⚠️ Catatan Penting untuk Penilaian Capstone:**
-> Untuk lingkungan *Live Production* resmi, kami **tidak menggunakan** layanan instan (PaaS). Proyek ini sepenuhnya diarsiteki menggunakan **Alibaba Cloud ECS (IaaS)** yang dikombinasikan dengan **Cloudflare Proxy**. 
->
-> Pemilihan infrastruktur mandiri ini sengaja dilakukan sebagai bukti keseriusan tim dalam membangun sistem yang matang (*enterprise-ready*), memiliki kontrol penuh atas performa server, efisiensi biaya komputasi AI (FinBERT), serta implementasi proteksi jaringan berlapis (SSL Handshake Full Mode + Isolasi Port Internal via Nginx Reverse Proxy).
-
-#### 1. Frontend (Vercel, Netlify, atau sejenisnya)
-1. Hubungkan repositori GitHub ke panel platform cloud hosting Anda (misal: **Vercel** atau **Netlify**).
-2. Masukkan `NEXT_PUBLIC_API_URL` dengan nilai `https://bi-api.bonodigital.biz.id`.
-3. Klik **Deploy**.
-
-#### 2. Backend Otomatis (Alibaba Cloud ECS via Script)
-Untuk mempermudah proses pembaruan dan instalasi di server produksi (ECS), proyek ini telah dilengkapi dengan skrip otomatisasi deployment `deploy_ecs.sh`. Skrip ini secara otomatis akan memperbarui dependensi sistem, mengisolasi *Virtual Environment*, mengonfigurasi ulang Systemd Service `bi-engine`, dan memicu *restart* server secara aman.
-
-**Langkah Eksekusi di Server ECS:**
 1. Masuk ke server ECS Anda via SSH.
-2. Masuk ke direktori proyek yang telah di-cloning:
+2. Masuk ke direktori proyek backend yang telah di-cloning:
    ```bash
    cd backend-ai-bussiness
    ```
-3. Berikan izin akses eksekusi pada file skrip:
+3. Berikan izin akses eksekusi dan jalankan skrip otomatisasi:
    ```bash
    chmod +x deploy_ecs.sh
-   ```
-4. Jalankan skrip deployment otomatis:
-   ```bash
    ./deploy_ecs.sh
    ```
+   *(Skrip akan otomatis memperbarui dependensi sistem, mengisolasi Virtual Environment Python, mengonfigurasi ulang Systemd Service `bi-engine`, dan memicu restart server secara aman di port internal `8000`).*
 
-#### 3. Konfigurasi Manual Jaringan & Gateway (Nginx & Cloudflare)
-Setelah skrip backend di atas berhasil dijalankan (Backend aktif di port internal `8000`), pastikan jalur pipa jaringan luar sudah dikonfigurasi sebagai berikut:
+### 2. Konfigurasi Gateway Nginx (Multi-Service Proxy)
+Setelah backend aktif di port internal `8000`, jalankan konfigurasi *Reverse Proxy* Nginx berikut untuk memetakan Domain Utama (ke port frontend `3000`) dan Subdomain API (ke port backend `8000`):
 
-**A. Sinkronisasi Gateway Nginx:**
 1. Salin file konfigurasi produksi dari repositori ke direktori sistem Nginx:
    ```bash
    sudo cp deployment/nginx.conf /etc/nginx/sites-available/bi-api
@@ -145,7 +122,7 @@ Setelah skrip backend di atas berhasil dijalankan (Backend aktif di port interna
    sudo systemctl restart nginx
    ```
 
-**B. Pengaturan Firewall & DNS:**
+### 3. Pengaturan Firewall & DNS
 - **Cloudflare**: DNS Terarah menggunakan *A Record* `bi-api` terproksi awan jingga (*Proxied*) dengan enkripsi SSL bertipe **Full**.
 - **Alibaba Cloud Security Group**: Membuka Port `80` (HTTP) dan `443` (HTTPS) untuk umum (`0.0.0.0/0`). Port internal `8000` otomatis terisolasi dengan aman dari publik karena dialihkan lewat internal routing Nginx.
 - **Firewall Internal (OS)**: Status `ufw` dinonaktifkan (`inactive`) agar tidak tumpang tindih dengan kebijakan kelompok keamanan Alibaba Cloud.
@@ -171,7 +148,7 @@ Setelah skrip backend di atas berhasil dijalankan (Backend aktif di port interna
 
 | Gejala Masalah | Kode Error | Solusi |
 |-------|----------|----------|
-| Mixed Content di Vercel | Blocked By Browser | Pastikan pemanggilan API menggunakan URL HTTPS Subdomain resmi. |
+| Mixed Content di Browser | Blocked By Browser | Pastikan pemanggilan API menggunakan URL HTTPS Subdomain resmi. |
 | Cloudflare Connection Timeout | Error 522 | Periksa *Security Group* Alibaba Cloud, pastikan Port 80/443 diizinkan (`Allow`). |
 | Web Server Is Down | Error 521 | Nginx belum diaktifkan di ECS atau belum dikonfigurasi mendengarkan port 443 SSL. |
 | Analisis Melambat | Response Delay | Wajar terjadi pada pemanggilan awal (~10-30s) untuk proses memuat model FinBERT pertama kali. |
