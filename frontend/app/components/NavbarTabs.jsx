@@ -1,64 +1,59 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { useMemo, useState } from 'react';
 
-const tabs = [
-  { href: '/', label: 'Stock Data' },
-  { href: '/ihsg-dashboard', label: 'IHSG Dashboard' },
-  { href: '/news', label: 'News' },
-  { href: '/sentiment', label: 'Sentiment' },
-  { href: '/stock-data', label: 'Stock Data' }
+const TABS = [
+  { key: 'ihsg', label: 'IHSG Dashboard' },
+  { key: 'stock', label: 'Stock' },
+  { key: 'news', label: 'News' },
+  { key: 'sentiment', label: 'Sentiment' },
+  { key: 'recommendation', label: 'Recomendation' },
 ];
 
-export default function NavbarTabs() {
-  const pathname = usePathname();
-
-  // Normalize pathname for highlighting
-  const activeHref =
-    pathname === '/stock-data' ? '/stock-data' : pathname === '/' ? '/' : pathname;
-
+function TabButton({ label, active, onClick }) {
   return (
-    <nav aria-label="Primary" className="sticky top-0 z-20">
-      <div className="mx-auto w-full max-w-6xl px-4 py-3">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 backdrop-blur">
-          <div className="flex flex-wrap items-center gap-2">
-            <NavPills activeHref={activeHref} />
-          </div>
-        </div>
-      </div>
-    </nav>
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'whitespace-nowrap rounded-full border px-4 py-2 text-sm transition ' +
+        (active
+          ? 'border-white/20 bg-white/[0.08] font-semibold text-white'
+          : 'border-white/10 bg-black/10 text-slate-200/80 hover:bg-white/[0.05]')
+      }
+    >
+      {label}
+    </button>
   );
 }
 
-function NavPills({ activeHref }) {
-  // Render exact menu requested: IHSG dashboard, news, sentiment, stock data
-  const menu = [
-    { href: '/ihsg-dashboard', label: 'IHSG dashboard' },
-    { href: '/news', label: 'news' },
-    { href: '/sentiment', label: 'sentiment' },
-    { href: '/stock-data', label: 'stock data' }
-  ];
+export default function NavbarTabs() {
+  const [active, setActive] = useState('ihsg');
+
+  const activeLabel = useMemo(() => {
+    return TABS.find((t) => t.key === active)?.label ?? '';
+  }, [active]);
 
   return (
-    <>
-      {menu.map((t) => {
-        const active = activeHref === t.href || (t.href === '/stock-data' && activeHref === '/');
-        return (
-          <Link
-            key={t.href}
-            href={t.href}
-            className={
-              active
-                ? 'rounded-xl bg-white/[0.08] px-3 py-2 text-sm font-semibold text-white'
-                : 'rounded-xl px-3 py-2 text-sm font-semibold text-slate-200/80 hover:bg-white/[0.05] hover:text-white'
-            }
-          >
-            {t.label}
-          </Link>
-        );
-      })}
-    </>
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#06070c]/80 backdrop-blur">
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <div className="text-xs text-slate-300/70">BI AI Dashboard</div>
+          <div className="truncate text-sm font-semibold tracking-tight">{activeLabel}</div>
+        </div>
+
+        <nav className="ml-auto flex flex-wrap justify-end gap-2">
+          {TABS.map((t) => (
+            <TabButton
+              key={t.key}
+              label={t.label}
+              active={t.key === active}
+              onClick={() => setActive(t.key)}
+            />
+          ))}
+        </nav>
+      </div>
+    </header>
   );
 }
 
